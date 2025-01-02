@@ -1,12 +1,6 @@
 import Config
 
-config :hive, :content_pipeline,
-  agents: [
-    Example.ContentGenerator,
-    Example.DuplicateChecker,
-    Example.ContentRefiner,
-    Example.Publisher,
-    Example.ErrorHandler
-  ]
-
-config :logger, :console, level: :debug
+config :hive,
+  log_level: :debug,
+  default_retry_attempts: 3,
+  retry_backoff: :exponential

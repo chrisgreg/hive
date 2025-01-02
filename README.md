@@ -183,18 +183,40 @@ end
 
 ```elixir
 # Start the pipeline with initial input
-result = MyApp.ContentGenerator.process(%{
-  prompt: "Write a blog post about Elixir",
-  max_tokens: 2000
-})
+result = Example.ContentGenerator.process(%{topic: "Elixir", length: 500, style: "smart"})
 
 case result do
-  {:success, data} -> IO.puts "Published at: #{data.url}"
-  {:error, reason} -> IO.puts "Error: #{inspect(reason)}"
+  {:published, data} -> IO.puts "Published at: #{data.url}"
+  {:retry, reason} -> IO.puts "Error: #{inspect(reason)}"
 end
 ```
 
-## Advanced Usage
+## Configuration Options
+
+Configure Hive in your `config/config.exs`:
+
+### Logging Levels
+
+- `:debug` - Detailed pipeline execution flow, useful for development
+- `:info` - General pipeline progress
+- `:warning` - Retry attempts and potential issues
+- `:error` - Failed operations and error states
+
+### Retry Behavior
+
+The retry delay is calculated based on the `retry_backoff` setting:
+
+- `:linear` - Delay = attempt_number \* 1000ms
+
+  - Attempt 1: 1 second
+  - Attempt 2: 2 seconds
+  - Attempt 3: 3 seconds
+
+- `:exponential` - Delay = (2 ^ (attempt_number - 1)) \* 1000ms
+  - Attempt 1: 1 second
+  - Attempt 2: 2 seconds
+  - Attempt 3: 4 seconds
+  - Attempt 4: 8 seconds
 
 ### Retry Configuration
 
