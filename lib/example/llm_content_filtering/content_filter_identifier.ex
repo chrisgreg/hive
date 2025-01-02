@@ -23,9 +23,10 @@ defmodule Example.ContentFilterIdentifier do
     [
       model: "gpt-4o-mini",
       prompt: """
-      Analyze the given content and determine if it should be filtered or passed.
-      Consider factors such as spam, inappropriate language, or irrelevant content.
-      Provide a detailed reasoning for your decision.
+      Assess if the content is rude or offensive.
+      Provide a succinct reasoning for your decision.
+
+      If the content is rude or offensive, the user will be banned - in your reasoning, address the user and the reason for the ban.
 
       Swearing is allowed, but only if it's to emphasize a point.
       """
@@ -38,7 +39,7 @@ defmodule Example.ContentFilterIdentifier do
         {:filter, %{spam?: true, reasoning: data.llm_reasoning}}
 
       {:ok, :pass, data} ->
-        {:pass, %{spam?: false, reasoning: data.llm_reasoning}}
+        {:pass, %{spam?: false, reasoning: data.llm_reasoning, content: input.content}}
 
       {:error, reason} ->
         {:error, %{reason: reason}}
@@ -51,8 +52,7 @@ defmodule Example.ContentFilterIdentifier.Pass do
 
   schema do
     input do
-      field(:spam?, :boolean)
-      field(:reasoning, :string)
+      field(:content, :string)
     end
 
     output do
@@ -66,11 +66,10 @@ defmodule Example.ContentFilterIdentifier.Pass do
   end
 
   def handle_task(input) do
-    IO.inspect(input)
     # Store the content in the database
-    {:complete,
+    {:comment_valid,
      %{
-       status: "Content passed filter",
+       content: input.content,
        processed_at: DateTime.utc_now() |> to_string()
      }}
   end
@@ -97,11 +96,10 @@ defmodule Example.ContentFilterIdentifier.Filter do
 
   def handle_task(input) do
     # Ban the user from the platform
-    {:complete,
+    {:user_banned,
      %{
        status: "Content filtered: #{input.reasoning}",
        processed_at: DateTime.utc_now() |> to_string()
      }}
-    |> IO.inspect()
   end
 end

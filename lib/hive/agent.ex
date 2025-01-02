@@ -188,20 +188,48 @@ defmodule Hive.Agent do
         require Logger
         agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
 
-        final_outcome =
-          if @llm_routing do
+        # First handle LLM routing if enabled
+        {final_outcome, final_data} =
+          if function_exported?(__MODULE__, :__llm_config__, 0) and __MODULE__.__llm_config__() do
             case Hive.LLM.Router.determine_outcome(__MODULE__, outcome, data) do
               {:ok, llm_outcome, llm_data} ->
                 Logger.debug("#{agent_name} LLM chose outcome: #{llm_outcome}")
                 {llm_outcome, Map.merge(data, llm_data)}
 
               {:error, reason} ->
-                Logger.error("#{agent_name} LLM routing failed: #{inspect(reason)}")
+                Logger.error("#{agent_name} LLM routing error: #{inspect(reason)}")
                 {outcome, data}
             end
           else
             {outcome, data}
           end
+
+        Logger.debug("#{agent_name} looking for outcome: #{inspect(final_outcome)}")
+        Logger.debug("#{agent_name} available outcomes: #{inspect(__MODULE__.__outcomes__())}")
+
+        # Find the matching outcome and its configuration
+        case Enum.find(__MODULE__.__outcomes__(), fn {name, _opts} -> name == final_outcome end) do
+          {_name, opts} ->
+            case opts do
+              # Handle routing to next module
+              [{:to, next_module} | _] when not is_nil(next_module) ->
+                Logger.debug("#{agent_name} routing to: #{inspect(next_module)}")
+                next_module.process(final_data)
+
+              # Handle retry with max attempts
+              [{:max_attempts, max} | _] when is_integer(max) ->
+                Logger.debug("#{agent_name} handling retry with max_attempts: #{max}")
+                handle_retry(final_data, max_attempts: max)
+
+              _ ->
+                Logger.debug("#{agent_name} no routing configuration found")
+                {final_outcome, final_data}
+            end
+
+          nil ->
+            Logger.debug("#{agent_name} no matching outcome found")
+            {final_outcome, final_data}
+        end
       end
 
       defp find_outcome_route(outcome) do
