@@ -60,19 +60,20 @@ defmodule Hive.Agent do
         require Logger
         # Generate a unique ID for this pipeline execution if not present
         input =
-          if !Map.has_key?(input, :_pipeline_id) do
-            Map.put(input, :_pipeline_id, System.unique_integer([:positive]))
-          else
+          if Map.has_key?(input, :_pipeline_id) do
             input
+          else
+            Map.put(input, :_pipeline_id, System.unique_integer([:positive, :monotonic]))
           end
 
         agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
         Logger.debug("Starting #{agent_name} Hive Pipeline ID: #{input[:_pipeline_id]})")
 
         with :ok <- validate_input(input),
-             result <- handle_task(input),
-             :ok <- validate_output(result) do
-          route_outcome(result)
+             {outcome, data} <- handle_task(input),
+             :ok <- validate_output(data) do
+          data = Map.put(data, :_pipeline_id, input[:_pipeline_id])
+          route_outcome({outcome, data}, input[:_pipeline_id])
         else
           {:error, reason} -> {:error, reason}
         end
@@ -86,7 +87,7 @@ defmodule Hive.Agent do
         Hive.Schema.validate(@output_schema, output)
       end
 
-      defp route_outcome({outcome, data}) do
+      defp route_outcome({outcome, data}, pipeline_id) do
         require Logger
         agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
 
@@ -100,6 +101,9 @@ defmodule Hive.Agent do
             # Log that we're forwarding to next agent
             next_agent_name = next_agent |> to_string() |> String.split(".") |> List.last()
             Logger.debug("#{agent_name} forwarding to #{next_agent_name}")
+
+            # Preserve the pipeline ID when forwarding
+            data = Map.put(data, :_pipeline_id, pipeline_id)
 
             # Process in next agent
             result = next_agent.process(data)
