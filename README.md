@@ -1,4 +1,4 @@
-# Hive
+# 🐝 Hive
 
 Hive is an Elixir framework for building autonomous agent pipelines with built-in validation,
 routing, and error handling. It provides a structured way to create interconnected agents
