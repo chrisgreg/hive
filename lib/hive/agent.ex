@@ -71,6 +71,8 @@ defmodule Hive.Agent do
       Module.register_attribute(__MODULE__, :input_schema, accumulate: false)
       Module.register_attribute(__MODULE__, :output_schema, accumulate: false)
       Module.register_attribute(__MODULE__, :outcomes, accumulate: true)
+      Module.register_attribute(__MODULE__, :llm_routing, accumulate: false)
+      Module.register_attribute(__MODULE__, :llm_config, accumulate: false)
     end
   end
 
@@ -120,11 +122,22 @@ defmodule Hive.Agent do
     end
   end
 
+  defmacro llm_routing(do: block) do
+    quote do
+      @llm_routing true
+      @llm_config unquote(block)
+    end
+  end
+
   # This macro is called after the module is defined to inject the necessary
   # GenServer implementation and helper functions
   defmacro __before_compile__(_env) do
     quote do
       use GenServer
+      def __llm_config__, do: @llm_config
+      def __outcomes__, do: @outcomes
+      def __input_schema__, do: @input_schema
+      def __output_schema__, do: @output_schema
 
       def start_link(init_arg) do
         GenServer.start_link(__MODULE__, init_arg, name: __MODULE__)
@@ -175,42 +188,20 @@ defmodule Hive.Agent do
         require Logger
         agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
 
-        case find_outcome_route(outcome) do
-          {:ok, nil} ->
-            Logger.log(
-              Hive.log_level(),
-              "#{agent_name} completed with outcome: #{outcome}"
-            )
+        final_outcome =
+          if @llm_routing do
+            case Hive.LLM.Router.determine_outcome(__MODULE__, outcome, data) do
+              {:ok, llm_outcome, llm_data} ->
+                Logger.debug("#{agent_name} LLM chose outcome: #{llm_outcome}")
+                {llm_outcome, Map.merge(data, llm_data)}
 
-            {outcome, data}
-
-          {:ok, next_agent} ->
-            next_agent_name = next_agent |> to_string() |> String.split(".") |> List.last()
-
-            Logger.log(
-              Hive.log_level(),
-              "#{agent_name} forwarding to #{next_agent_name}"
-            )
-
-            data = Map.put(data, :_pipeline_id, pipeline_id)
-            result = next_agent.process(data)
-
-            if elem(result, 0) != outcome do
-              Logger.log(
-                Hive.log_level(),
-                "#{agent_name} completed with outcome: #{elem(result, 0)}"
-              )
+              {:error, reason} ->
+                Logger.error("#{agent_name} LLM routing failed: #{inspect(reason)}")
+                {outcome, data}
             end
-
-            result
-
-          {:retry, opts} ->
-            handle_retry(data, opts)
-
-          {:error, reason} ->
-            Logger.error("#{agent_name} failed: #{inspect(reason)}")
-            {:error, reason}
-        end
+          else
+            {outcome, data}
+          end
       end
 
       defp find_outcome_route(outcome) do
