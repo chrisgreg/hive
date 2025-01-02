@@ -66,12 +66,14 @@ defmodule Hive.Agent do
   - Debug logging of agent execution flow
   """
 
+  # When a module uses Hive.Agent, this macro sets up the necessary imports and module attributes
   defmacro __using__(_opts) do
     quote do
       import Hive.Agent
       import Hive.Schema, only: [field: 2, field: 3]
       @before_compile Hive.Agent
 
+      # Register module attributes for storing schemas and outcomes
       Module.register_attribute(__MODULE__, :input_schema, accumulate: false)
       Module.register_attribute(__MODULE__, :output_schema, accumulate: false)
       Module.register_attribute(__MODULE__, :outcomes, accumulate: true)
@@ -80,7 +82,6 @@ defmodule Hive.Agent do
 
   @doc """
   Defines a schema block for input or output schema definition.
-
   This is an internal macro used by `input/1` and `output/1`.
   """
   defmacro schema(do: block) do
@@ -91,14 +92,6 @@ defmodule Hive.Agent do
 
   @doc """
   Defines the input schema for the agent.
-
-  ## Example
-
-      input do
-        field :name, :string, required: true
-        field :age, :integer, default: 0
-        field :metadata, :map
-      end
   """
   defmacro input(do: block) do
     quote do
@@ -108,14 +101,6 @@ defmodule Hive.Agent do
 
   @doc """
   Defines the output schema for the agent.
-
-  ## Example
-
-      output do
-        field :result, :string
-        field :processed_at, :datetime
-        field :status, :atom
-      end
   """
   defmacro output(do: block) do
     quote do
@@ -125,14 +110,6 @@ defmodule Hive.Agent do
 
   @doc """
   Defines a block for declaring possible outcomes of the agent.
-
-  ## Example
-
-      outcomes do
-        outcome :success, to: NextAgent
-        outcome :error, to: ErrorHandler
-        outcome :retry, max_attempts: 3
-      end
   """
   defmacro outcomes(do: block) do
     quote do
@@ -142,16 +119,6 @@ defmodule Hive.Agent do
 
   @doc """
   Defines a single outcome and its routing or configuration.
-
-  ## Options
-
-    * `:to` - The next agent module to route to for this outcome
-    * `:max_attempts` - For retry outcomes, maximum number of retry attempts
-
-  ## Example
-
-      outcome :success, to: MyApp.NextAgent
-      outcome :retry, max_attempts: 3
   """
   defmacro outcome(name, opts) do
     quote do
@@ -159,10 +126,14 @@ defmodule Hive.Agent do
     end
   end
 
+  # This macro is called after the module is defined to inject the necessary
+  # GenServer implementation and helper functions
   defmacro __before_compile__(_env) do
     quote do
+      # Make the agent a GenServer for potential distributed processing
       use GenServer
 
+      # Standard GenServer callbacks
       def start_link(init_arg) do
         GenServer.start_link(__MODULE__, init_arg, name: __MODULE__)
       end
@@ -171,9 +142,11 @@ defmodule Hive.Agent do
         {:ok, state}
       end
 
+      # Main entry point for processing data through the agent
       def process(input) do
         require Logger
-        # Generate a unique ID for this pipeline execution if not present
+
+        # Ensure each pipeline execution has a unique ID for tracking
         input =
           if Map.has_key?(input, :_pipeline_id) do
             input
@@ -181,12 +154,15 @@ defmodule Hive.Agent do
             Map.put(input, :_pipeline_id, System.unique_integer([:positive, :monotonic]))
           end
 
+        # Log the start of processing for this agent
         agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
         Logger.debug("Starting #{agent_name} Hive Pipeline ID: #{input[:_pipeline_id]})")
 
+        # Execute the processing pipeline with validation
         with :ok <- validate_input(input),
              {outcome, data} <- handle_task(input),
              :ok <- validate_output(data) do
+          # Preserve pipeline ID in the output
           data = Map.put(data, :_pipeline_id, input[:_pipeline_id])
           route_outcome({outcome, data}, input[:_pipeline_id])
         else
@@ -194,36 +170,37 @@ defmodule Hive.Agent do
         end
       end
 
+      # Validate input data against the input schema
       defp validate_input(input) do
         Hive.Schema.validate(@input_schema, input)
       end
 
+      # Validate output data against the output schema
       defp validate_output(output) do
         Hive.Schema.validate(@output_schema, output)
       end
 
+      # Handle routing of outcomes to the next agent in the pipeline
       defp route_outcome({outcome, data}, pipeline_id) do
         require Logger
         agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
 
         case find_outcome_route(outcome) do
           {:ok, nil} ->
-            # Log completion before returning final result
+            # End of pipeline - return the final result
             Logger.debug("#{agent_name} completed with outcome: #{outcome}")
             {outcome, data}
 
           {:ok, next_agent} ->
-            # Log that we're forwarding to next agent
+            # Forward to the next agent in the pipeline
             next_agent_name = next_agent |> to_string() |> String.split(".") |> List.last()
             Logger.debug("#{agent_name} forwarding to #{next_agent_name}")
 
-            # Preserve the pipeline ID when forwarding
+            # Preserve pipeline ID when forwarding
             data = Map.put(data, :_pipeline_id, pipeline_id)
-
-            # Process in next agent
             result = next_agent.process(data)
 
-            # Only log our completion if the outcome changed
+            # Log completion if outcome changed
             if elem(result, 0) != outcome do
               Logger.debug("#{agent_name} completed with outcome: #{elem(result, 0)}")
             end
@@ -231,14 +208,17 @@ defmodule Hive.Agent do
             result
 
           {:retry, _opts} ->
+            # Handle retry logic
             handle_retry(data)
 
           {:error, reason} ->
+            # Log and return errors
             Logger.error("#{agent_name} failed: #{inspect(reason)}")
             {:error, reason}
         end
       end
 
+      # Look up the routing configuration for a given outcome
       defp find_outcome_route(outcome) do
         case Enum.find(@outcomes, fn {name, _opts} -> name == outcome end) do
           {_name, opts} -> {:ok, opts[:to]}
@@ -246,12 +226,14 @@ defmodule Hive.Agent do
         end
       end
 
+      # Handle retry logic with exponential backoff
       defp handle_retry(data) do
         require Logger
 
         pipeline_id = data[:_pipeline_id]
         attempt = Map.get(data, :_retry_attempt, 0) + 1
 
+        # Get max attempts from retry outcome configuration
         max_attempts =
           Enum.find(@outcomes, fn {name, _} -> name == :retry end)
           |> elem(1)
@@ -260,7 +242,7 @@ defmodule Hive.Agent do
         if attempt <= max_attempts do
           data = Map.put(data, :_retry_attempt, attempt)
           Logger.warning("Retry attempt #{attempt}/#{max_attempts}")
-          # Backoff delay
+          # Simple backoff delay - could be made more sophisticated
           Process.sleep(1000)
           process(data)
         else
