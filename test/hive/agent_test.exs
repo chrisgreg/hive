@@ -18,7 +18,7 @@ defmodule Hive.AgentTest do
 
     outcomes do
       outcome(:success, to: nil)
-      outcome(:retry, max_attempts: 2)
+      outcome(:retry, max_attempts: 3)
       outcome(:error, to: nil)
     end
 
@@ -26,12 +26,20 @@ defmodule Hive.AgentTest do
       case input do
         %{name: name} ->
           age = Map.get(input, :age, 0)
+          retry_attempt = Map.get(input, :_retry_attempt, 0)
 
           cond do
-            name == "retry_me" ->
+            name == "retry_me" and retry_attempt < 2 ->
               {:retry,
                Map.merge(input, %{
                  message: "Retrying...",
+                 processed_at: DateTime.utc_now() |> to_string()
+               })}
+
+            name == "retry_me" and retry_attempt >= 2 ->
+              {:success,
+               Map.merge(input, %{
+                 message: "Retry successful",
                  processed_at: DateTime.utc_now() |> to_string()
                })}
 
@@ -91,8 +99,8 @@ defmodule Hive.AgentTest do
   describe "retry mechanism" do
     test "handles retry with max attempts" do
       result = TestAgent.process(%{name: "retry_me", age: 30})
-      assert {:retry, data} = result
-      assert data.message == "Retrying..."
+      assert {:success, data} = result
+      assert data.message == "Retry successful"
     end
   end
 
@@ -108,6 +116,89 @@ defmodule Hive.AgentTest do
       result = TestAgent.process(%{name: "Eve", age: 40})
       assert {:success, data} = result
       assert is_integer(data._pipeline_id)
+    end
+  end
+
+  describe "agent routing" do
+    defmodule RouterTestAgent do
+      use Hive.Agent
+
+      input do
+        field(:message, :string, required: true)
+      end
+
+      output do
+        field(:processed_message, :string)
+      end
+
+      outcomes do
+        outcome(:next, to: RouterTestAgent.Next)
+        outcome(:error, to: RouterTestAgent.Error)
+      end
+
+      def handle_task(input) do
+        case input.message do
+          "error" -> {:error, %{processed_message: "Error occurred"}}
+          _ -> {:next, %{processed_message: "Processed: #{input.message}"}}
+        end
+      end
+    end
+
+    defmodule RouterTestAgent.Next do
+      use Hive.Agent
+
+      input do
+        field(:processed_message, :string, required: true)
+      end
+
+      output do
+        field(:final_message, :string)
+      end
+
+      outcomes do
+        outcome(:complete, to: nil)
+      end
+
+      def handle_task(input) do
+        {:complete, %{final_message: "Final: #{input.processed_message}"}}
+      end
+    end
+
+    defmodule RouterTestAgent.Error do
+      use Hive.Agent
+
+      input do
+        field(:processed_message, :string, required: true)
+      end
+
+      output do
+        field(:error_message, :string)
+      end
+
+      outcomes do
+        outcome(:complete, to: nil)
+      end
+
+      def handle_task(input) do
+        {:complete, %{error_message: "Error handled: #{input.processed_message}"}}
+      end
+    end
+
+    test "successfully routes to next agent" do
+      result = RouterTestAgent.process(%{message: "hello"})
+      assert {:complete, %{final_message: "Final: Processed: hello"}} = result
+    end
+
+    test "successfully routes to error handler" do
+      result = RouterTestAgent.process(%{message: "error"})
+      assert {:complete, %{error_message: "Error handled: Error occurred"}} = result
+    end
+
+    test "maintains pipeline ID through routing chain" do
+      pipeline_id = "test_pipeline_456"
+      result = RouterTestAgent.process(%{message: "hello", _pipeline_id: pipeline_id})
+      assert {:complete, data} = result
+      assert data._pipeline_id == pipeline_id
     end
   end
 end
