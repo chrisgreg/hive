@@ -1,7 +1,71 @@
 defmodule Hive.Agent do
   @moduledoc """
   Provides the core functionality for creating autonomous agents in the Hive framework.
+
+  Hive.Agent allows you to create autonomous agents that can process data, make decisions,
+  and route outcomes to other agents in a pipeline. Each agent can define its input/output
+  schemas and possible outcomes.
+
+  ## Example
+  ```elixir
+  defmodule MyApp.ContentGenerator do
+    use Hive.Agent
+
+    input do
+      field :prompt, :string, required: true
+      field :max_length, :integer, default: 1000
+    end
+
+    output do
+      field :content, :string
+      field :metadata, :map
+    end
+
+    outcomes do
+      outcome :success, to: MyApp.ContentRefiner
+      outcome :error, to: MyApp.ErrorHandler
+      outcome :retry, max_attempts: 3
+    end
+
+    def handle_task(input) do
+      # Process the input and generate content
+      case generate_content(input) do
+        {:ok, content} ->
+          {:success, %{content: content, metadata: %{generated_at: DateTime.utc_now()}}}
+        {:error, _reason} ->
+          {:retry, %{}}
+      end
+    end
+
+    defp generate_content(_input) do
+      # Implementation
+    end
+  end  ```
+
+  ## Agent Configuration
+
+  Each agent requires:
+
+  1. Input schema - defines expected input fields and their types
+  2. Output schema - defines the structure of the output data
+  3. Outcomes - defines possible outcomes and their routing
+  4. handle_task/1 function - implements the agent's core logic
+
+  ## Pipeline Execution
+
+  Agents are typically executed in a pipeline where the output of one agent becomes
+  the input for the next agent based on the outcome routing:
+  ```elixir
+  MyApp.ContentGenerator.process(%{prompt: "Generate a blog post about Elixir"})  ```
+
+  ## Automatic Features
+
+  - Input/output validation based on schemas
+  - Automatic retry handling with configurable attempts
+  - Pipeline ID tracking across the agent chain
+  - Debug logging of agent execution flow
   """
+
   defmacro __using__(_opts) do
     quote do
       import Hive.Agent
@@ -14,30 +78,81 @@ defmodule Hive.Agent do
     end
   end
 
+  @doc """
+  Defines a schema block for input or output schema definition.
+
+  This is an internal macro used by `input/1` and `output/1`.
+  """
   defmacro schema(do: block) do
     quote do
       unquote(block)
     end
   end
 
+  @doc """
+  Defines the input schema for the agent.
+
+  ## Example
+
+      input do
+        field :name, :string, required: true
+        field :age, :integer, default: 0
+        field :metadata, :map
+      end
+  """
   defmacro input(do: block) do
     quote do
       @input_schema Hive.Schema.new(unquote(block))
     end
   end
 
+  @doc """
+  Defines the output schema for the agent.
+
+  ## Example
+
+      output do
+        field :result, :string
+        field :processed_at, :datetime
+        field :status, :atom
+      end
+  """
   defmacro output(do: block) do
     quote do
       @output_schema Hive.Schema.new(unquote(block))
     end
   end
 
+  @doc """
+  Defines a block for declaring possible outcomes of the agent.
+
+  ## Example
+
+      outcomes do
+        outcome :success, to: NextAgent
+        outcome :error, to: ErrorHandler
+        outcome :retry, max_attempts: 3
+      end
+  """
   defmacro outcomes(do: block) do
     quote do
       unquote(block)
     end
   end
 
+  @doc """
+  Defines a single outcome and its routing or configuration.
+
+  ## Options
+
+    * `:to` - The next agent module to route to for this outcome
+    * `:max_attempts` - For retry outcomes, maximum number of retry attempts
+
+  ## Example
+
+      outcome :success, to: MyApp.NextAgent
+      outcome :retry, max_attempts: 3
+  """
   defmacro outcome(name, opts) do
     quote do
       @outcomes {unquote(name), unquote(opts)}
