@@ -47,7 +47,7 @@ defmodule Example.DuplicateChecker do
     end
   end
 
-  defp check_duplicates(%{content: content}) do
+  defp check_duplicates(%{content: _content}) do
     # Simulate duplicate checking logic
     # In reality, this could use vector similarity, text comparison, etc.
     similarity_score = :rand.uniform()

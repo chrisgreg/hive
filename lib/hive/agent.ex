@@ -148,31 +148,21 @@ defmodule Hive.Agent do
       end
 
       def process(input) do
-        require Logger
+        case Hive.Supervisor.start_pipeline(__MODULE__, input) do
+          {:ok, pid} ->
+            ref = Process.monitor(pid)
 
-        # Use framework's pipeline ID generator
-        input =
-          if Map.has_key?(input, :_pipeline_id) do
-            input
-          else
-            Map.put(input, :_pipeline_id, Hive.generate_pipeline_id())
-          end
+            receive do
+              {:pipeline_result, result} ->
+                Process.demonitor(ref)
+                result
 
-        agent_name = __MODULE__ |> to_string() |> String.split(".") |> List.last()
+              {:DOWN, ^ref, :process, ^pid, _reason} ->
+                {:error, :pipeline_crashed}
+            end
 
-        # Use configured log level
-        Logger.log(
-          Hive.log_level(),
-          "Starting #{agent_name} (Pipeline ID: #{input[:_pipeline_id]})"
-        )
-
-        with :ok <- validate_input(input),
-             {outcome, data} <- handle_task(input),
-             :ok <- validate_output(data) do
-          data = Map.put(data, :_pipeline_id, input[:_pipeline_id])
-          route_outcome({outcome, data}, input[:_pipeline_id])
-        else
-          {:error, reason} -> {:error, reason}
+          {:error, reason} ->
+            {:error, reason}
         end
       end
 

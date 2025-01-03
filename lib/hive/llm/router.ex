@@ -19,10 +19,12 @@ defmodule Hive.LLM.Router do
     config = agent_module.__llm_config__()
     outcomes = agent_module.__outcomes__() |> IO.inspect()
 
-    prompt = build_prompt(config, current_outcome, data, outcomes)
+    prompt =
+      build_prompt(config, current_outcome, data, outcomes)
+      |> IO.inspect()
 
     case Instructor.chat_completion(
-           model: config[:model] || "gpt-3.5-turbo",
+           model: config[:model] || "gpt-4o-mini",
            response_model: Decision,
            messages: [%{role: "user", content: prompt}]
          ) do

@@ -137,9 +137,13 @@ defmodule Hive do
   @doc """
   Starts the Hive application and any required dependencies.
   """
-  def start do
-    # In the future, this could start supervision trees or required services
-    :ok
+  def start(_type, _args) do
+    children = [
+      {Hive.Supervisor, []}
+    ]
+
+    opts = [strategy: :one_for_one, name: Hive.Application]
+    Supervisor.start_link(children, opts)
   end
 
   @doc """

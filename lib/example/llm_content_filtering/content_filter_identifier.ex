@@ -35,11 +35,24 @@ defmodule Example.ContentFilterIdentifier do
 
   def handle_task(input) do
     case Hive.LLM.Router.determine_outcome(__MODULE__, :initial, input) do
-      {:ok, :filter, data} ->
-        {:filter, %{spam?: true, reasoning: data.llm_reasoning}}
-
       {:ok, :pass, data} ->
-        {:pass, %{spam?: false, reasoning: data.llm_reasoning, content: input.content}}
+        {:pass,
+         %{
+           content: input.content,
+           spam?: false,
+           reasoning: data.llm_reasoning
+         }}
+
+      {:ok, :filter, data} ->
+        {:filter,
+         %{
+           content: input.content,
+           spam?: true,
+           reasoning: data.llm_reasoning
+         }}
+
+      {:ok, :error, data} ->
+        {:error, %{reason: data.llm_reasoning}}
 
       {:error, reason} ->
         {:error, %{reason: reason}}
