@@ -141,6 +141,8 @@ defmodule Hive do
     # Set the Logger level based on the configuration
     Logger.configure(level: log_level())
 
+    Application.put_env(:instructor, :openai, instructor_config()[:openai])
+
     children = [
       {Hive.Supervisor, []}
     ]
@@ -155,5 +157,26 @@ defmodule Hive do
   def stop do
     # In the future, this could handle cleanup of resources
     :ok
+  end
+
+  @doc """
+  Returns the Instructor configuration settings.
+
+  ## Examples
+
+      iex> Hive.instructor_config()
+      [openai: [api_key: "...", adapter: Instructor.Adapters.OpenAI]]
+  """
+  def instructor_config do
+    config = Application.get_env(:hive, :instructor, [])
+    openai_config = Keyword.get(config, :openai, [])
+
+    # Ensure the API key is set
+    openai_config =
+      Keyword.put_new_lazy(openai_config, :api_key, fn ->
+        System.get_env("OPENAI_API_KEY") || raise "OPENAI_API_KEY environment variable is not set"
+      end)
+
+    Keyword.put(config, :openai, openai_config)
   end
 end

@@ -1,4 +1,4 @@
-defmodule Example do
+defmodule Examples do
   @moduledoc """
   This module contains example functions demonstrating the usage of the Hive framework.
   These examples can be run in IEx to see Hive in action.
