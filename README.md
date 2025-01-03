@@ -191,6 +191,110 @@ case result do
 end
 ```
 
+## LLM Routing Example
+
+Hive supports LLM-based routing, allowing you to use language models to make dynamic decisions in your agent pipelines. Here's an example of how to implement LLM routing:
+
+```elixir
+defmodule MyApp.ContentFilterIdentifier do
+  use Hive.Agent
+
+  schema do
+    input do
+      field(:content, :string, required: true)
+    end
+
+    output do
+      field(:spam?, :boolean)
+      field(:reasoning, :string)
+    end
+  end
+
+  outcomes do
+    outcome(:filter, to: MyApp.ContentFilterIdentifier.Filter)
+    outcome(:pass, to: MyApp.ContentFilterIdentifier.Pass)
+    outcome(:retry, to: __MODULE__, max_attempts: 3)
+    outcome(:error, to: MyApp.ErrorHandler)
+  end
+
+  llm_routing do
+    [
+      model: "gpt-4-turbo",
+      prompt: """
+      Assess if the content is spam or offensive.
+      Provide a succinct reasoning for your decision.
+
+      If the content is spam or offensive, it will be filtered.
+      """
+    ]
+  end
+
+  def handle_task(input) do
+    case Hive.LLM.Router.determine_outcome(__MODULE__, :initial, input) do
+      {:ok, :filter, data} ->
+        {:filter, %{spam?: true, reasoning: data.llm_reasoning}}
+
+      {:ok, :pass, data} ->
+        {:pass, %{spam?: false, reasoning: data.llm_reasoning, content: input.content}}
+
+      {:error, reason} ->
+        {:error, %{reason: reason}}
+    end
+  end
+end
+```
+
+In this example:
+
+1. We define an agent `ContentFilterIdentifier` that uses LLM routing to determine if content should be filtered or passed.
+2. The `llm_routing` macro is used to configure the LLM model and provide a custom prompt.
+3. In `handle_task/1`, we use `Hive.LLM.Router.determine_outcome/3` to get the LLM's decision.
+4. Based on the LLM's decision, we route the content to either the `Filter` or `Pass` outcome.
+
+### Integration with Instructor
+
+Hive uses [Instructor](https://github.com/instructor-ai/instructor-elixir) under the hood for structured LLM outputs. The `Hive.LLM.Router` automatically creates an Instructor-compatible schema for the LLM's decision:
+
+```elixir
+defmodule Hive.LLM.Router.Decision do
+  use Ecto.Schema
+  use Instructor.Validator
+
+  @primary_key false
+  embedded_schema do
+    field(:outcome, :string)
+    field(:reasoning, :string)
+    field(:next_step, :string)
+  end
+end
+```
+
+### Automatic Schema Translation
+
+Hive automatically translates your agent's schema definitions into Instructor-compatible schemas. For example, your input/output schemas:
+
+```elixir
+schema do
+  input do
+    field(:content, :string, required: true)
+  end
+
+  output do
+    field(:spam?, :boolean)
+    field(:reasoning, :string)
+  end
+end
+```
+
+Are automatically translated to Instructor schemas behind the scenes, ensuring type safety and validation when working with LLM responses. This translation handles various field types including:
+
+- Basic types (:string, :integer, :float, :boolean)
+- Complex types (:map, {:array, type})
+- Nested schemas
+- Required/optional fields
+
+This approach allows for dynamic, content-aware decision making within your Hive pipelines, leveraging the power of large language models while maintaining type safety and validation.
+
 ## Configuration Options
 
 Configure Hive in your `config/config.exs`:
