@@ -14,25 +14,15 @@ defmodule Hive.PipelineWorker do
   @impl true
   def handle_continue(:process, {module, input, parent}) do
     result = do_process(module, input)
-    send(parent, {:pipeline_result, result})
+    send(parent, {:pipeline_result, self(), result})
     {:stop, :normal, result}
   end
 
   defp do_process(module, input) do
-    # Add pipeline ID if not present
-    input =
-      if Map.has_key?(input, :_pipeline_id) do
-        input
-      else
-        Map.put(input, :_pipeline_id, Hive.generate_pipeline_id())
-      end
-
     agent_name = module |> to_string() |> String.split(".") |> List.last()
+    input = Map.put_new(input, :_pipeline_id, Hive.generate_pipeline_id())
 
-    Logger.log(
-      Hive.log_level(),
-      "Starting #{agent_name} (Pipeline ID: #{input[:_pipeline_id]})"
-    )
+    Logger.debug("Starting #{agent_name} (Pipeline ID: #{input[:_pipeline_id]})")
 
     with :ok <- validate_input(module, input),
          {outcome, data} <- module.handle_task(input),
@@ -71,9 +61,6 @@ defmodule Hive.PipelineWorker do
         {outcome, data}
       end
 
-    Logger.debug("#{agent_name} looking for outcome: #{inspect(final_outcome)}")
-    Logger.debug("#{agent_name} available outcomes: #{inspect(module.__outcomes__())}")
-
     # Find and handle the matching outcome
     case Enum.find(module.__outcomes__(), fn {name, _opts} -> name == final_outcome end) do
       {_name, opts} ->
@@ -83,16 +70,15 @@ defmodule Hive.PipelineWorker do
             next_module.process(final_data)
 
           [{:max_attempts, max} | _] when is_integer(max) ->
-            Logger.debug("#{agent_name} handling retry with max_attempts: #{max}")
+            Logger.info("#{agent_name} handling retry with max_attempts: #{max}")
             handle_retry(module, final_data, max_attempts: max)
 
           _ ->
-            Logger.debug("#{agent_name} no routing configuration found")
             {final_outcome, final_data}
         end
 
       nil ->
-        Logger.debug("#{agent_name} no matching outcome found")
+        Logger.warn("#{agent_name} no matching outcome found")
         {final_outcome, final_data}
     end
   end

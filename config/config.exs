@@ -1,7 +1,7 @@
 import Config
 
 config :hive,
-  log_level: :debug,
+  log_level: :info,
   default_retry_attempts: 3,
   retry_backoff: :exponential
 

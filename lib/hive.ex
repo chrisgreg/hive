@@ -69,7 +69,7 @@ defmodule Hive do
       :debug
   """
   def log_level do
-    Application.get_env(:hive, :log_level, :debug)
+    Application.get_env(:hive, :log_level, :error)
   end
 
   @doc """
@@ -138,6 +138,9 @@ defmodule Hive do
   Starts the Hive application and any required dependencies.
   """
   def start(_type, _args) do
+    # Set the Logger level based on the configuration
+    Logger.configure(level: log_level())
+
     children = [
       {Hive.Supervisor, []}
     ]

@@ -164,12 +164,16 @@ defmodule Hive.Agent do
             ref = Process.monitor(pid)
 
             receive do
-              {:pipeline_result, result} ->
+              {:pipeline_result, ^pid, result} ->
                 Process.demonitor(ref)
                 result
 
               {:DOWN, ^ref, :process, ^pid, _reason} ->
                 {:error, :pipeline_crashed}
+            after
+              30_000 ->
+                Process.demonitor(ref)
+                {:error, :timeout}
             end
 
           {:error, reason} ->
