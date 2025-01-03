@@ -54,7 +54,7 @@ defmodule Example.ContentFilterIdentifier do
   end
 
   def handle_task(input) do
-    case Hive.LLM.Router.determine_outcome(__MODULE__, :initial, input) do
+    case Hive.LLM.Router.determine_outcome(__MODULE__, input) do
       {:ok, :pass, data} ->
         {:pass,
          %{

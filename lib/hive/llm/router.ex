@@ -15,12 +15,12 @@ defmodule Hive.LLM.Router do
     end
   end
 
-  def determine_outcome(agent_module, current_outcome, data) do
+  def determine_outcome(agent_module, data) do
     config = agent_module.__llm_config__()
-    outcomes = agent_module.__outcomes__() |> IO.inspect()
+    outcomes = agent_module.__outcomes__()
 
     prompt =
-      build_prompt(config, current_outcome, data, outcomes)
+      build_prompt(config, data, outcomes)
 
     case Instructor.chat_completion(
            model: config[:model] || "gpt-4o-mini",
@@ -29,7 +29,7 @@ defmodule Hive.LLM.Router do
          ) do
       {:ok, decision} ->
         # Validate the chosen outcome exists
-        outcome = String.to_atom(decision.outcome) |> IO.inspect()
+        outcome = String.to_atom(decision.outcome)
 
         if Enum.any?(outcomes, fn {name, _} -> name == outcome end) do
           {:ok, outcome, Map.put(data, :llm_reasoning, decision.reasoning)}
@@ -42,7 +42,7 @@ defmodule Hive.LLM.Router do
     end
   end
 
-  defp build_prompt(config, current_outcome, data, outcomes) do
+  defp build_prompt(config, data, outcomes) do
     outcome_descriptions =
       outcomes
       |> Enum.map(fn {name, opts} ->
@@ -62,6 +62,5 @@ defmodule Hive.LLM.Router do
 
     Choose the most appropriate outcome based on the above information.
     """
-    |> IO.inspect()
   end
 end

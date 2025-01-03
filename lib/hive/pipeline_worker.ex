@@ -28,7 +28,7 @@ defmodule Hive.PipelineWorker do
          {outcome, data} <- module.handle_task(input),
          :ok <- validate_output(module, data) do
       data = Map.put(data, :_pipeline_id, input[:_pipeline_id])
-      route_outcome(module, {outcome, data}, input[:_pipeline_id])
+      route_outcome(module, {outcome, data})
     else
       {:error, reason} -> {:error, reason}
     end
@@ -42,13 +42,13 @@ defmodule Hive.PipelineWorker do
     Hive.Schema.validate(module.__output_schema__(), output)
   end
 
-  defp route_outcome(module, {outcome, data}, pipeline_id) do
+  defp route_outcome(module, {outcome, data}) do
     agent_name = module |> to_string() |> String.split(".") |> List.last()
 
     # Handle LLM routing if enabled
     {final_outcome, final_data} =
       if function_exported?(module, :__llm_config__, 0) and module.__llm_config__() do
-        case Hive.LLM.Router.determine_outcome(module, outcome, data) do
+        case Hive.LLM.Router.determine_outcome(module, data) do
           {:ok, llm_outcome, llm_data} ->
             Logger.debug("#{agent_name} LLM chose outcome: #{llm_outcome}")
             {llm_outcome, Map.merge(data, llm_data)}
@@ -78,7 +78,6 @@ defmodule Hive.PipelineWorker do
         end
 
       nil ->
-        Logger.warn("#{agent_name} no matching outcome found")
         {final_outcome, final_data}
     end
   end

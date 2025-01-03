@@ -196,7 +196,7 @@ defmodule Hive.Agent do
         # First handle LLM routing if enabled
         {final_outcome, final_data} =
           if function_exported?(__MODULE__, :__llm_config__, 0) and __MODULE__.__llm_config__() do
-            case Hive.LLM.Router.determine_outcome(__MODULE__, outcome, data) do
+            case Hive.LLM.Router.determine_outcome(__MODULE__, data) do
               {:ok, llm_outcome, llm_data} ->
                 Logger.debug("#{agent_name} LLM chose outcome: #{llm_outcome}")
                 {llm_outcome, Map.merge(data, llm_data)}
@@ -232,7 +232,6 @@ defmodule Hive.Agent do
             end
 
           nil ->
-            Logger.debug("#{agent_name} no matching outcome found")
             {final_outcome, final_data}
         end
       end
