@@ -3,8 +3,8 @@ defmodule Example.Greeter do
 
   schema do
     input do
+      field(:language, :string, required: true)
       field(:name, :string, required: true)
-      field(:language, :string, default: "en")
     end
 
     output do
@@ -14,27 +14,28 @@ defmodule Example.Greeter do
   end
 
   outcomes do
-    outcome(:success, to: Example.Formatter)
-    outcome(:error, to: nil)
+    outcome(:supported_language, to: Example.Greeter.Formatter)
+    outcome(:unsupported_language, to: Example.Greeter.UnsupportedLanguage)
   end
 
   def handle_task(input) do
-    greeting =
+    {result, greeting} =
       case input.language do
-        "es" -> "¡Hola"
-        "fr" -> "Bonjour"
-        _ -> "Hello"
+        "es" -> {:supported_language, "¡Hola"}
+        "fr" -> {:supported_language, "Bonjour"}
+        _ -> {:unsupported_language, :error}
       end
 
-    {:success,
+    {result,
      %{
        greeting: "#{greeting} #{input.name}",
+       language: input.language,
        timestamp: DateTime.utc_now() |> to_string()
      }}
   end
 end
 
-defmodule Example.Formatter do
+defmodule Example.Greeter.Formatter do
   use Hive.Agent
 
   schema do
@@ -59,8 +60,33 @@ defmodule Example.Formatter do
        formatted_message: String.upcase(input.greeting),
        metadata: %{
          processed_at: input.timestamp,
-         formatter_version: "1.0"
+         greeter_formatter_version: "1.0"
        }
+     }}
+  end
+end
+
+defmodule Example.Greeter.UnsupportedLanguage do
+  use Hive.Agent
+
+  schema do
+    input do
+      field(:language, :string, required: true)
+    end
+
+    output do
+      field(:unsupported_language, :string)
+    end
+
+    outcomes do
+      outcome(:unsupported_language, to: nil)
+    end
+  end
+
+  def handle_task(input) do
+    {:unsupported_language,
+     %{
+       unsupported_language: input.language
      }}
   end
 end
