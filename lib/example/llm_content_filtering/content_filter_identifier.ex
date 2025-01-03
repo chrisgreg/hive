@@ -3,20 +3,40 @@ defmodule Example.ContentFilterIdentifier do
 
   schema do
     input do
-      field(:content, :string, required: true)
+      field(
+        :content,
+        :string,
+        "The user's content to be checked for rudeness or offensive material"
+      )
     end
 
     output do
-      field(:spam?, :boolean)
-      field(:reasoning, :string)
+      field(:spam?, :boolean, "Whether the content was identified as spam/offensive")
+      field(:reasoning, :string, "Explanation for why the content was marked as spam or allowed")
     end
   end
 
   outcomes do
-    outcome(:filter, to: Example.ContentFilterIdentifier.Filter)
-    outcome(:pass, to: Example.ContentFilterIdentifier.Pass)
-    outcome(:retry, to: __MODULE__, max_attempts: 3)
-    outcome(:error, to: Example.ErrorHandler)
+    outcome(:filter,
+      to: Example.ContentFilterIdentifier.Filter,
+      description: "Choose when content is offensive, rude, or violates community guidelines"
+    )
+
+    outcome(:pass,
+      to: Example.ContentFilterIdentifier.Pass,
+      description: "Choose when content is appropriate and can be published"
+    )
+
+    outcome(:retry,
+      to: __MODULE__,
+      max_attempts: 3,
+      description: "Choose when the decision is unclear and needs another review"
+    )
+
+    outcome(:error,
+      to: Example.ErrorHandler,
+      description: "Choose when there's a critical issue that needs human review"
+    )
   end
 
   llm_routing do
@@ -65,21 +85,23 @@ defmodule Example.ContentFilterIdentifier.Pass do
 
   schema do
     input do
-      field(:content, :string)
+      field(:content, :string, "The approved content to be published")
     end
 
     output do
-      field(:status, :string)
-      field(:processed_at, :string)
+      field(:status, :string, "The final status of the approved content")
+      field(:processed_at, :string, "When the content was processed")
     end
   end
 
   outcomes do
-    outcome(:complete, to: nil)
+    outcome(:complete,
+      to: nil,
+      description: "Final state after content has been approved and stored"
+    )
   end
 
   def handle_task(input) do
-    # Store the content in the database
     {:comment_valid,
      %{
        content: input.content,
@@ -93,22 +115,24 @@ defmodule Example.ContentFilterIdentifier.Filter do
 
   schema do
     input do
-      field(:spam?, :boolean)
-      field(:reasoning, :string)
+      field(:spam?, :boolean, "Whether the content was flagged as spam")
+      field(:reasoning, :string, "The explanation for why the content was filtered")
     end
 
     output do
-      field(:status, :string)
-      field(:processed_at, :string)
+      field(:status, :string, "The final status of the filtered content")
+      field(:processed_at, :string, "When the content was processed")
     end
   end
 
   outcomes do
-    outcome(:complete, to: nil)
+    outcome(:complete,
+      to: nil,
+      description: "Final state after content has been filtered and user banned"
+    )
   end
 
   def handle_task(input) do
-    # Ban the user from the platform
     {:user_banned,
      %{
        status: "Content filtered: #{input.reasoning}",

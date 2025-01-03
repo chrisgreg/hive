@@ -115,6 +115,17 @@ defmodule Hive.Agent do
 
   @doc """
   Defines a single outcome and its routing or configuration.
+
+  ## Options
+    * `:to` - The module to route to
+    * `:max_attempts` - Maximum retry attempts
+    * `:description` - Description of when this outcome should be chosen (for LLM routing)
+
+  ## Example
+      outcomes do
+        outcome :success, to: NextModule, description: "Use when processing succeeds"
+        outcome :retry, max_attempts: 3, description: "Use when a temporary error occurs"
+      end
   """
   defmacro outcome(name, opts) do
     quote do

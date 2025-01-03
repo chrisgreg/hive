@@ -52,8 +52,18 @@ defmodule Hive.Schema do
       field(:age, :integer, required: true, default: 0)
 
   """
-  def field(name, type, opts) do
+  def field(name, type, opts) when is_list(opts) do
     {name, type, opts}
+  end
+
+  # New overload that accepts a description string
+  def field(name, type, description) when is_binary(description) do
+    {name, type, [description: description]}
+  end
+
+  # New overload that accepts both description and options
+  def field(name, type, description, opts) when is_binary(description) and is_list(opts) do
+    {name, type, Keyword.put(opts, :description, description)}
   end
 
   @doc """

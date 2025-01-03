@@ -21,7 +21,6 @@ defmodule Hive.LLM.Router do
 
     prompt =
       build_prompt(config, current_outcome, data, outcomes)
-      |> IO.inspect()
 
     case Instructor.chat_completion(
            model: config[:model] || "gpt-4o-mini",
@@ -44,26 +43,25 @@ defmodule Hive.LLM.Router do
   end
 
   defp build_prompt(config, current_outcome, data, outcomes) do
-    custom_prompt = config[:prompt]
-
     outcome_descriptions =
-      Enum.map(outcomes, fn {name, opts} ->
-        "- #{name}: #{opts[:description] || "No description provided"}"
+      outcomes
+      |> Enum.map(fn {name, opts} ->
+        description = Keyword.get(opts, :description, "No description provided")
+        "- #{name}: #{description}"
       end)
+      |> Enum.join("\n")
 
     """
-    #{custom_prompt || "Determine the next step in the pipeline."}
-
-    Current outcome: #{current_outcome}
-    Current data: #{inspect(data)}
+    #{config[:prompt]}
 
     Available outcomes:
-    #{Enum.join(outcome_descriptions, "\n")}
+    #{outcome_descriptions}
 
-    Provide your decision in the following format:
-    - outcome: The selected outcome name
-    - reasoning: A brief explanation of why this outcome was chosen
-    - next_step: The name of the next agent to process this data (or 'nil' if it's the end)
+    Current data:
+    #{inspect(data)}
+
+    Choose the most appropriate outcome based on the above information.
     """
+    |> IO.inspect()
   end
 end
