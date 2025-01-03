@@ -1,17 +1,18 @@
 # 🐝 Hive
 
-Hive is an Elixir framework for building autonomous agent pipelines with built-in validation,
+Hive is an Elixir framework for building autonomous (optionally LLM-powered) agent pipelines with built-in validation,
 routing, and error handling. It provides a structured way to create interconnected agents
-that can process data, make decisions, and handle errors gracefully.
+that can process data, make decisions, and handle errors gracefully with or without LLM support.
 
 ## Features
 
-- 🔄 **Pipeline-based Processing**: Chain multiple agents together to create complex workflows
-- ✅ **Built-in Validation**: Schema-based input/output validation for each agent
-- 🔁 **Automatic Retry Handling**: Configurable retry mechanisms for failed operations
-- 📝 **Comprehensive Logging**: Debug logging of pipeline execution flow
-- 🔍 **Pipeline Tracking**: Unique IDs for tracking requests through the entire pipeline
-- ⚡ **GenServer-based**: Ready for distributed processing
+- **Pipeline-based Processing**: Chain infinitely many agents together to create complex workflows
+- **Built-in Validation**: Schema-based input/output validation for each agent
+- **Automatic Retry Handling**: Configurable retry mechanisms for failed operations
+- **Comprehensive Logging**: Debug logging of pipeline execution flow
+- **Pipeline Tracking**: Unique IDs for tracking requests through the entire pipeline
+- **LLM Integration**: Use language models for dynamic routing and processing
+- **GenServer-based**: Ready for distributed processing
 
 ## Installation
 
@@ -25,9 +26,67 @@ def deps do
 end
 ```
 
+## Configuration
+
+Configure Hive in your `config/config.exs`:
+
+```elixir
+config :hive,
+  log_level: :info,
+  default_retry_attempts: 3,
+  retry_backoff: :exponential,
+  instructor: [
+    openai: [
+      api_key: System.get_env("OPENAI_API_KEY"),
+      adapter: Instructor.Adapters.OpenAI
+    ]
+  ]
+```
+
+Add Hive to your project's supervision tree in `lib/my_app/application.ex`:
+
+```elixir
+defmodule MyApp.Application do
+  use Application
+
+  def start(_type, _args) do
+    children = [
+      # ... your other supervisors ...
+      Hive.Supervisor
+    ]
+
+    opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+    Supervisor.start_link(children, opts)
+  end
+end
+```
+
+## Quick Start
+
+Hive comes with several example pipelines that demonstrate its capabilities. You can run these examples in IEx and view their source code in the `lib/example` directory for more details on their implementation:
+
+```elixir
+# Start an IEx session
+iex -S mix
+
+# Run the multilingual greeting example
+iex> Examples.run_greeter("es", "Maria")
+{:complete, %{formatted_message: "¡HOLA MARIA", ...}}
+
+# Run the content generation pipeline
+iex> Examples.run_content_pipeline("Elixir", 500, "technical")
+{:published, %{url: "https://example.com/content/...", published_at: ~U[...], status: "published"}}
+
+# Run the content filtering pipeline
+iex> Examples.run_profanity_filter("Hello, this is a friendly message!")
+{:pass, %{spam?: false, reasoning: "Content is appropriate and friendly"}}
+```
+
 ## Simple Example
 
-Here's a basic example of how to use Hive to create a simple agent:
+Here's a basic example of how to use Hive to create a simple agent.
+
+An agent that specifies a nil outcome will be the last agent in the pipeline and will be the result of the pipeline. Otherwise, the pipeline will continue to the next agent which should be specified using the `to:` option.
 
 ```elixir
 defmodule MyApp.SimpleGreeter do
@@ -66,7 +125,7 @@ This example demonstrates:
 3. Implementing the `handle_task/1` function
 4. Processing input and handling the result
 
-## Quick Start
+## Advanced Example
 
 For more advanced usage, let's walk through creating a multi-agent pipeline:
 
@@ -77,8 +136,7 @@ defmodule MyApp.ContentGenerator do
   use Hive.Agent
 
   input do
-    field :prompt, :string, required: true
-    field :max_tokens, :integer, default: 1000
+    field :prompt, :string
   end
 
   output do
@@ -105,7 +163,7 @@ defmodule MyApp.ContentGenerator do
   end
 
   defp generate_content(input) do
-    # Your content generation logic here
+    # Call to your content generation API here
     {:ok, "Generated content for: #{input.prompt}"}
   end
 end
@@ -148,6 +206,11 @@ defmodule MyApp.Pipeline do
         metadata: Map.put(input.metadata, :refined_at, DateTime.utc_now())
       }}
     end
+
+    defp refine_content(content) do
+      # Call to your content refinement API here
+      content
+    end
   end
 
   # Final Agent: Publishes the content
@@ -165,15 +228,20 @@ defmodule MyApp.Pipeline do
     end
 
     outcomes do
-      outcome :success, to: nil  # End of pipeline
+      outcome :published, to: nil  # End of pipeline
       outcome :error, to: MyApp.ErrorHandler
     end
 
     def handle_task(input) do
-      {:success, %{
+      {:published, %{
         url: publish_content(input.content),
         published_at: DateTime.utc_now()
       }}
+    end
+
+    defp publish_content(content) do
+      # Call to your content publishing API here
+      "https://example.com/content/#{content}"
     end
   end
 end
@@ -193,7 +261,12 @@ end
 
 ## LLM Routing Example
 
-Hive supports LLM-based routing, allowing you to use language models to make dynamic decisions in your agent pipelines. Here's an example of how to implement LLM routing:
+Hive supports LLM-based routing, allowing you to use language models to make dynamic decisions in your agent pipelines.
+When using LLM routing, the LLM will be used to determine the outcome of the agent, you can then specify how to mutate the data before passing it to the next agent using the `handle_task/1` function.
+
+Specifying descriptions for each outcome is optional, but it's recommended to help the LLM understand the context of the decision to help it make the best choice.
+
+Here's an example of how to implement LLM routing:
 
 ```elixir
 defmodule MyApp.ContentFilterIdentifier do
@@ -201,20 +274,40 @@ defmodule MyApp.ContentFilterIdentifier do
 
   schema do
     input do
-      field(:content, :string, required: true)
+      field(
+        :content,
+        :string,
+        "The user's content to be checked for rudeness or offensive material"
+      )
     end
 
     output do
-      field(:spam?, :boolean)
-      field(:reasoning, :string)
+      field(:spam?, :boolean, "Whether the content was identified as spam/offensive")
+      field(:reasoning, :string, "Explanation for why the content was marked as spam or allowed")
     end
   end
 
   outcomes do
-    outcome(:filter, to: MyApp.ContentFilterIdentifier.Filter)
-    outcome(:pass, to: MyApp.ContentFilterIdentifier.Pass)
-    outcome(:retry, to: __MODULE__, max_attempts: 3)
-    outcome(:error, to: MyApp.ErrorHandler)
+    outcome(:filter,
+      to: Example.ContentFilterIdentifier.Filter,
+      description: "Choose when content is offensive, rude, or violates community guidelines"
+    )
+
+    outcome(:pass,
+      to: Example.ContentFilterIdentifier.Pass,
+      description: "Choose when content is appropriate and can be published"
+    )
+
+    outcome(:retry,
+      to: __MODULE__,
+      max_attempts: 3,
+      description: "Choose when the decision is unclear and needs another review"
+    )
+
+    outcome(:error,
+      to: Example.ErrorHandler,
+      description: "Choose when there's a critical issue that needs human review"
+    )
   end
 
   llm_routing do
@@ -248,12 +341,11 @@ In this example:
 
 1. We define an agent `ContentFilterIdentifier` that uses LLM routing to determine if content should be filtered or passed.
 2. The `llm_routing` macro is used to configure the LLM model and provide a custom prompt.
-3. In `handle_task/1`, we use `Hive.LLM.Router.determine_outcome/3` to get the LLM's decision.
-4. Based on the LLM's decision, we route the content to either the `Filter` or `Pass` outcome.
+3. In `handle_task/1`, we use `Hive.LLM.Router.determine_outcome/2` to get the LLM's decision and mutate the data accordingly before passing it to the next agent.
 
 ### Integration with Instructor
 
-Hive uses [Instructor](https://github.com/instructor-ai/instructor-elixir) under the hood for structured LLM outputs. The `Hive.LLM.Router` automatically creates an Instructor-compatible schema for the LLM's decision:
+Hive uses [Instructor_Ex](https://github.com/thmsmlr/instructor_ex) under the hood for structured LLM outputs. The `Hive.LLM.Router` automatically creates an Instructor-compatible schema for the LLM's decision:
 
 ```elixir
 defmodule Hive.LLM.Router.Decision do
@@ -351,7 +443,7 @@ defmodule MyApp.ErrorHandler do
 
   def handle_task(input) do
     # Log error, send notifications, etc.
-    {:handled, %{status: :error_logged}}
+    {:handled, %{error: input.error}}
   end
 end
 ```
@@ -362,7 +454,7 @@ Track requests through the pipeline using the automatically generated pipeline I
 
 ```elixir
 def handle_task(%{_pipeline_id: pipeline_id} = input) do
-  Logger.metadata(pipeline_id: pipeline_id)
+  MyCustomLogger.log(pipeline_id: pipeline_id)
   # Your processing logic here
 end
 ```
@@ -371,9 +463,10 @@ end
 
 1. Fork it
 2. Create your feature branch (`git checkout -b feature/my-new-feature`)
-3. Commit your changes (`git commit -am 'Add some feature'`)
-4. Push to the branch (`git push origin feature/my-new-feature`)
-5. Create new Pull Request
+3. Write tests for your changes
+4. Commit your changes (`git commit -am 'Add some feature'`)
+5. Push to the branch (`git push origin feature/my-new-feature`)
+6. Create new Pull Request
 
 ## License
 
