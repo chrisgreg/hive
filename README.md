@@ -323,7 +323,7 @@ defmodule MyApp.ContentFilterIdentifier do
   end
 
   def handle_task(input) do
-    case Hive.LLM.Router.determine_outcome(__MODULE__, :input) do
+    case Hive.LLM.Router.determine_outcome(__MODULE__, input) do
       {:ok, :filter, data} ->
         {:filter, %{spam?: true, reasoning: data.llm_reasoning}}
 
