@@ -51,16 +51,22 @@ defmodule Hive.LLM.Router do
       end)
       |> Enum.join("\n")
 
+    outcome_names =
+      outcomes
+      |> Enum.map(fn {name, _} -> to_string(name) end)
+      |> Enum.join(", ")
+
     """
     #{config[:prompt]}
 
-    Available outcomes:
+    Available outcomes (YOU MUST CHOOSE EXACTLY ONE OF THESE):
     #{outcome_descriptions}
 
     Current data:
     #{inspect(data)}
 
-    Choose the most appropriate outcome based on the above information.
+    IMPORTANT: Your 'outcome' field MUST be exactly one of: #{outcome_names}
+    Do not use any other values like 'allowed', 'denied', etc. Only use the exact outcome names listed above.
     """
   end
 end

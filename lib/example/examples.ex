@@ -57,4 +57,66 @@ defmodule Examples do
       content: content
     })
   end
+
+  @doc """
+  Runs the tutorial generation pipeline with AI-powered content creation and caching.
+
+  ## Example
+
+      iex> Examples.run_tutorial_generator("How to bake bread", "beginner", 1000)
+      {:cached, %{
+        topic: "How to bake bread",
+        difficulty: "beginner",
+        tutorial_content: "# How to Bake Bread\\n\\n## Introduction...",
+        metadata: %{...},
+        cached_at: "2024-01-15 10:30:00"
+      }}
+
+      # Running the same request again will return cached result
+      iex> Examples.run_tutorial_generator("How to bake bread", "beginner", 1000)
+      {:cache_hit, %{cached: true, ...}}
+  """
+  def run_tutorial_generator(topic, difficulty \\ "beginner", max_length \\ 1000) do
+    Example.TutorialRequestValidator.process(%{
+      topic: topic,
+      difficulty: difficulty,
+      max_length: max_length
+    })
+  end
+
+  @doc """
+  Clears the tutorial cache. Useful for testing.
+
+  ## Example
+
+      iex> Examples.clear_tutorial_cache()
+      :ok
+  """
+  def clear_tutorial_cache do
+    Example.TutorialCacheManager.clear_cache()
+  end
+
+  @doc """
+  Shows statistics about the tutorial cache.
+
+  ## Example
+
+      iex> Examples.tutorial_cache_stats()
+      %{exists: true, size: 2, memory: 1024}
+  """
+  def tutorial_cache_stats do
+    Example.TutorialCacheManager.cache_stats()
+  end
+
+  @doc """
+  Lists all cached tutorial keys.
+
+  ## Example
+
+      iex> Examples.list_cached_tutorials()
+      ["tutorial:how_to_bake_bread:beginner:1000", ...]
+  """
+  def list_cached_tutorials do
+    Example.TutorialCacheManager.list_cached_keys()
+  end
 end
