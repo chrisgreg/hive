@@ -2,6 +2,12 @@ defmodule Hive.AgentTest do
   use ExUnit.Case, async: true
   doctest Hive.Agent
 
+  setup do
+    Application.ensure_all_started(:hive)
+    on_exit(fn -> Application.stop(:hive) end)
+    :ok
+  end
+
   # Test Agent Implementation
   defmodule TestAgent do
     use Hive.Agent

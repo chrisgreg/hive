@@ -10,3 +10,5 @@ config :hive,
       adapter: Instructor.Adapters.OpenAI
     ]
   ]
+
+import_config "#{config_env()}.exs"

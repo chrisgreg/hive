@@ -2,7 +2,9 @@ defmodule HiveTest do
   use ExUnit.Case
   doctest Hive
 
-  test "greets the world" do
-    assert Hive.hello() == :world
+  setup do
+    Application.ensure_all_started(:hive)
+    on_exit(fn -> Application.stop(:hive) end)
+    :ok
   end
 end

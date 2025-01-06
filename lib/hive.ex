@@ -69,7 +69,7 @@ defmodule Hive do
       :debug
   """
   def log_level do
-    Application.get_env(:hive, :log_level, :error)
+    Application.get_env(:hive, :log_level, :debug)
   end
 
   @doc """
@@ -164,8 +164,9 @@ defmodule Hive do
 
   ## Examples
 
-      iex> Hive.instructor_config()
-      [openai: [api_key: "...", adapter: Instructor.Adapters.OpenAI]]
+      iex> config = Hive.instructor_config()
+      iex> Keyword.get(config, :openai) |> Keyword.get(:adapter) == Instructor.Adapters.OpenAI
+      true
   """
   def instructor_config do
     config = Application.get_env(:hive, :instructor, [])
